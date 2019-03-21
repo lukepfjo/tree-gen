@@ -9,6 +9,8 @@ from queue import Queue
 
 
 class _LogThread(threading.Thread):
+    # Set to run as a daemon, so this thread kills itself at program termination
+
     def __init__(self, queue):
         threading.Thread.__init__(self)
 
@@ -21,11 +23,7 @@ class _LogThread(threading.Thread):
 
         while True:
             msg = self.queue.get()
-
-            if msg == 'kill_thread':
-                break
-
-            sys.stdout.write(msg)
+            sys.stdout.write(str(msg))
             sys.stdout.flush()
 
         self.running = False
@@ -61,13 +59,9 @@ def object_deleted(o):
         return True
 
 
-def simplify_branch_geometry(context, angle_limit=1.5):
+def convert_to_mesh(context):
     """
-    Converts tree branches from curve to mesh, then runs a limited dissolve
-    to reduce their geometric complexity with minimal quality loss.
-
-    [float] angle_limit :: Radian value in float form that provides the angle
-                           limit for the limited dissolve. Default is 1.5
+    Converts tree branches from curve to mesh
     """
 
     scene = context.scene
@@ -75,7 +69,7 @@ def simplify_branch_geometry(context, angle_limit=1.5):
     try:
         tree = scene.objects.active
     except AttributeError:
-        raise Exception('Could not find tree while attempting to simplify branch geometry')
+        raise Exception('Could not find tree while attempting to convert to mesh')
 
     old_branches = None
     for child in tree.children:
@@ -84,7 +78,7 @@ def simplify_branch_geometry(context, angle_limit=1.5):
             break
 
     if old_branches is None:
-        raise Exception('No branches found while simplifying branch geometry')
+        raise Exception('No branches found while converting to mesh')
 
     # Convert the branches curve to a mesh, then get an editable copy
     old_branch_mesh = old_branches.to_mesh(scene, False, 'RENDER')
@@ -102,9 +96,6 @@ def simplify_branch_geometry(context, angle_limit=1.5):
 
     del old_branches
 
-    # Perform a limited dissolve
-    bmesh.ops.dissolve_limit(br_bmesh, verts=br_bmesh.verts, edges=br_bmesh.edges, angle_limit=radians(angle_limit))
-
     # Create a new mesh and container object
     new_branches = bpy.data.objects.new('Branches', bpy.data.meshes.new('branches'))
     br_bmesh.to_mesh(new_branches.data)
@@ -116,3 +107,79 @@ def simplify_branch_geometry(context, angle_limit=1.5):
     scene.objects.link(new_branches)
     new_branches.matrix_world = tree.matrix_world
     new_branches.parent = tree
+
+
+def generate_lods(context, level_count=3):
+    from ch_trees import parametric
+    update_log = parametric.gen.update_log
+
+    scene = context.scene
+
+    try:
+        tree = scene.objects.active
+    except AttributeError:
+        raise Exception('Could not find tree while attempting to generate LODs')
+
+    original = None
+    for child in tree.children:
+        if child.name.startswith('Branches'):
+            base_name = child.name
+            child.name = child.name + '_LOD0'
+            original = child
+            parent = child.parent
+            break
+
+    if original is None:
+        raise Exception('No branches found while attempting to generate LODs')
+
+    resolutions = [3, 2, 1]
+    dissolve_ratios = [.9, .7, .5]
+    for level in range(0, level_count):
+        lod_level_name = '_LOD' + str(level + 1)
+
+        # Create copy of curve
+        new_curve = original.copy()
+        new_curve.data = original.data.copy()
+        curve_bmesh = bmesh.new()  # Create a modifiable mesh data container
+
+        # Set the resolution of the new curve and convert to mesh
+        new_curve.data.resolution_u = resolutions[level]
+        temp_mesh = new_curve.to_mesh(bpy.context.scene, settings='RENDER', apply_modifiers=False)
+        curve_bmesh.from_mesh(temp_mesh)
+
+        # Purge temp mesh from memory
+        bpy.data.meshes.remove(temp_mesh)
+        del temp_mesh
+
+        # Create a new object, copy data from curve_bmesh into it, and purge bmesh from memory
+        new_branches = bpy.data.objects.new(base_name + lod_level_name, bpy.data.meshes.new('branches' + lod_level_name))
+        curve_bmesh.to_mesh(new_branches.data)
+        curve_bmesh.clear()
+        curve_bmesh.free()
+
+        # Decimate
+        modifier = new_branches.modifiers.new('TreeDecimateMod', 'DECIMATE')
+        modifier.ratio = dissolve_ratios[level]
+
+        # Make the mesh active in the scene, then associate it with the tree
+        scene.objects.link(new_branches)
+        new_branches.matrix_world = parent.matrix_world
+        new_branches.parent = parent
+
+        # Select new branches and make them the active object
+        bpy.ops.object.select_all(action='DESELECT')
+        new_branches.select = True
+        bpy.context.scene.objects.active = new_branches
+
+        bpy.ops.object.modifier_apply(modifier='TreeDecimateMod')
+
+        # Purge old data from memory
+        bpy.data.curves.remove(new_curve.data)
+        if not object_deleted(new_curve):
+            bpy.data.objects.remove(new_curve, True)
+        del new_curve
+
+        update_log('\rLOD level ' + str(level + 1) + '/' + str(level_count) + ' generated')
+
+    update_log('\n')
+
