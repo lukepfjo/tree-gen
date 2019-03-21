@@ -31,7 +31,7 @@ class Leaf(object):
             shape = leaf_geom.blossom(abs(leaf_type + 1))
 
         else:  # leaf
-            if leaf_type < 1 or leaf_type > 10:  # is out of range or explicitly default
+            if leaf_type < 1 or leaf_type > 11:  # is out of range or explicitly default
                 leaf_type = 8
             shape = leaf_geom.leaves(leaf_type - 1)
 

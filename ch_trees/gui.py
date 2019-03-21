@@ -143,7 +143,7 @@ class TreeGen(bpy.types.Operator):
     leaf_shape_options = (
         ('1', 'Ovate', 'Ovate'), ('2', 'Linear', 'Linear'), ('3', 'Cordate', 'Cordate'), ('4', 'Maple', 'Maple'),
         ('5', 'Palmate', 'Palmate'), ('6', 'Spiky Oak', 'Spiky Oak'), ('7', 'Rounded Oak', 'Rounded Oak'),
-        ('8', 'Elliptic', 'Elliptic'), ('9', 'Rectangle', 'Rectangle'), ('10', 'Triangle', 'Triangle')
+        ('8', 'Elliptic', 'Elliptic'), ('9', 'Rectangle', 'Rectangle'), ('10', 'Triangle', 'Triangle'), ('11', 'Vertex', 'Vertex')
     )
     _scene.tree_leaf_shape_input = _props.EnumProperty(name="", description="Predefined leaf shapes, rectangle is easiest if wishing to use an image texture", items=leaf_shape_options, default='3')
 
