@@ -10,7 +10,7 @@ import pprint
 import queue
 from copy import deepcopy
 
-from ch_trees import parametric
+from ch_trees import parametric, utilities
 from ch_trees.parametric.tree_params import tree_param
 
 
@@ -56,12 +56,12 @@ class TreeGen(bpy.types.Operator):
     _scene = bpy.types.Scene
     _props = bpy.props
 
-    # Drop-downs containing tree options for each generation method
-    # These are switched between by TreeGenPanel.draw() based on the state of tree_gen_method_input
+    # Drop-down containing tree options
     parametric_items = _get_tree_types()
+    _scene.custom_tree_load_params_input = _props.EnumProperty(name="", default="ch_trees.parametric.tree_params.quaking_aspen", items=parametric_items)
 
     # Nothing exciting here. Seed and leaf toggle
-    _scene.seed_input = _props.IntProperty(name="", default=1, min=0, max=9999999)
+    _scene.seed_input = _props.IntProperty(name="", default=0, min=0, max=9999999)
     _scene.generate_leaves_input = _props.BoolProperty(name="Generate Leaves/Blossom", default=True)
 
     # ======================
@@ -102,12 +102,12 @@ class TreeGen(bpy.types.Operator):
     _scene.tree_flare_input = _props.FloatProperty(name="", description="How much the radius at the base of the trunk increases", default=.6, min=0, max=10)
 
     # Branch appearance
-    _scene.tree_branches_input = _props.IntVectorProperty(name="", description="The maximum number of child branches at a given level on each parent branch. The first level parameter indicates the number of trunks coming from the floor, positioned in a rough circle facing outwards (see bamboo)", default=(1, 50, 30, 1), size=4, min=1, max=500)
+    _scene.tree_branches_input = _props.IntVectorProperty(name="", description="The maximum number of child branches at a given level on each parent branch. The first level parameter indicates the number of trunks coming from the floor, positioned in a rough circle facing outwards (see bamboo). If <0 then all branches are placed in a 'fan' at end of the parent branch", default=(1, 50, 30, 1), size=4, min=-500, max=500)
 
     _scene.tree_length_input = _props.FloatVectorProperty(name="", description="The length of branches at a given level as a fraction of their parent branch’s length", default=(1, 0.3, 0.6, 0), size=4, min=0, max=1)
     _scene.tree_length_v_input = _props.FloatVectorProperty(name="", description="Maximum variation in branch length", default=(0, 0, 0, 0), size=4, min=-0, max=1)
 
-    _scene.tree_branch_dist_input = _props.FloatVectorProperty(name="", description="Controls the distribution of branches along their parent stem. 0 indicates fully alternate branching, interpolating to fully opposite branching at 1. Values > 1 indicate whorled branching (as on fir trees) with n + 1 branches in each whorl. Fractional values result in a rounded integer number of branches in each whorl", default=(0, 0, 0, 0), size=4, min=0, max=1)
+    _scene.tree_branch_dist_input = _props.FloatVectorProperty(name="", description="Controls the distribution of branches along their parent stem. 0 indicates fully alternate branching, interpolating to fully opposite branching at 1. Values > 1 indicate whorled branching (as on fir trees) with n + 1 branches in each whorl. Fractional values result in a rounded integer number of branches in each whorl with rounding error distributed along the trunk", default=(0, 0, 0, 0), size=4, min=0, max=1)
 
     _scene.tree_taper_input = _props.FloatVectorProperty(name="", description="Controls the tapering of the radius of each branch along its length. If < 1 then the branch tapers to that fraction of its base radius at its end, so a value 1 results in conical tapering. If =2 the radius remains uniform until the end of the stem where the branch is rounded off in a hemisphere, fractional values between 1 and 2 interpolate between conical tapering and this rounded end. Values > 2 result in periodic tapering with a maximum variation in radius equal to the value − 2 of the base radius - so a value of 3 results in a series of adjacent spheres (see palm trunk)", default=(1, 1, 1, 1), size=4, min=-0, max=3)
     _scene.tree_radius_mod_input = _props.FloatVectorProperty(name="", description="", default=(1, 1, 1, 1), size=4, min=0, max=1)
@@ -134,7 +134,7 @@ class TreeGen(bpy.types.Operator):
 
     # ----
     # Cumulative count of leaves and blossoms on each of the deepest level of branches
-    _scene.tree_leaf_blos_num_input = _props.IntProperty(name="", description="Number of leaves or blossom on each of the deepest level of branches", default=40, min=-1000, max=3000)
+    _scene.tree_leaf_blos_num_input = _props.IntProperty(name="", description="Number of leaves or blossom on each of the deepest level of branches. If <0 then all leaves are placed in a fan the end of the branch", default=40, min=-1000, max=3000)
 
     # Leaf shape
     leaf_shape_options = (
@@ -174,19 +174,18 @@ class TreeGen(bpy.types.Operator):
     # ----
     # Utilities
 
-    # Load custom params
-    _scene.custom_tree_load_params_input = _props.EnumProperty(name="", default="ch_trees.parametric.tree_params.quaking_aspen", items=parametric_items)
-
     # Render inputs; auto-fill path input with user's home directory
-    _scene.render_input = _props.BoolProperty(name="Render", default=False)
+    _scene.render_input = _props.BoolProperty(name="Render After Generation", default=False)
     render_output_path = os.path.sep.join((os.path.expanduser('~'), 'treegen_render.png'))
     _scene.render_output_path_input = _props.StringProperty(name="", default=render_output_path)
 
     # Convert selected tree to mesh
-    _scene.tree_gen_convert_to_mesh_input = _props.BoolProperty(name="Convert to Mesh", default=False, description="After generation, automatically convert to mesh.")
+    _scene.tree_gen_convert_to_mesh_input = _props.BoolProperty(name="Convert to Mesh After Generation", default=False,
+                                                                description="After generation, automatically convert the branches from a curve to a mesh.")
 
     # Create LODs
-    _scene.tree_gen_create_lods_input = _props.BoolProperty(name="Create LODs", default=False, description="After generation, create three copies of the tree (meshes) of decreasing quality. The original tree curve will be preserved, but can be converted using the 'Convert To Mesh' button.")
+    _scene.tree_gen_create_lods_input = _props.BoolProperty(name="Create LODs After Generation", default=False,
+                                                            description="After generation, create three copies of the tree (meshes) of decreasing quality. The original tree curve will be preserved, but can be converted using the 'Convert To Mesh' button.")
 
 
     # ---
@@ -212,25 +211,26 @@ class TreeGen(bpy.types.Operator):
 
         try:
             # Find the highest valid level
-            while scene.tree_levels_input > 1:
+            while scene.tree_levels_input > 0:
                 level_length = scene.tree_length_input[scene.tree_levels_input - 1]
 
                 if float(level_length) == 0.0:
                     update_log('Hint: tree level ' + str(scene.tree_levels_input) + ' was ignored due to having a length of 0.0\n')
                     scene.tree_levels_input -= 1
-                    level_length = scene.tree_length_input[scene.tree_levels_input - 1]
 
                 else:
                     params['levels'] = scene.tree_levels_input
                     break
 
-            if scene.tree_levels_input == 1:
+            if scene.tree_levels_input == 0:
                 update_log('All levels have a length of zero!\n')
                 return
 
             start_time = time.time()
-            parametric.gen.construct(params, scene.seed_input, scene.render_input, scene.render_output_path_input,
-                                     scene.generate_leaves_input)
+            parametric.gen.construct(params, scene.seed_input, scene.generate_leaves_input)
+
+            if scene.render_input:
+                callback_queue.put(bpy.ops.object.tree_gen_render_tree)
 
             # This task has to be run on the main thread, so it gets queued instead of called
             if scene.tree_gen_create_lods_input:
@@ -250,7 +250,6 @@ class TreeGen(bpy.types.Operator):
 
         if success:
             callback_queue.put('KILL')  # Kill modal used for running tasks in main thread
-
             sys.stdout.write('\nTree generated in {:.6f} seconds\n\n'.format(time.time() - start_time))
 
     # ----
@@ -282,8 +281,21 @@ class TreeGen(bpy.types.Operator):
         return params
 
 
+class TreeGenRender(bpy.types.Operator):
+    """Create a render of the selected tree"""
+
+    bl_idname = "object.tree_gen_render_tree"
+    bl_category = "TreeGen"
+    bl_label = "Render Tree"
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        utilities.render_tree(context.scene.render_output_path_input)
+        return {'FINISHED'}
+
+
 class TreeGenConvertToMesh(bpy.types.Operator):
-    """Convert tree branch curve to mesh"""
+    """Convert the selected tree's branches curve to mesh"""
 
     bl_idname = "object.tree_gen_convert_to_mesh"
     bl_category = "TreeGen"
@@ -311,7 +323,7 @@ class TreeGenConvertToMesh(bpy.types.Operator):
 
 
 class TreeGenCreateLODs(bpy.types.Operator):
-    """Generate 3 LODs"""
+    """Generate 3 LODs for the selected tree"""
 
     bl_idname = "object.tree_gen_create_lods"
     bl_category = "TreeGen"
@@ -659,8 +671,9 @@ class TreeGenUtilitiesPanel(bpy.types.Panel):
         box = layout.box()
         box.row()
         label_row('', 'render_input', checkbox=True, container=box)
-        if scene.render_input:
-            label_row('Filepath:', 'render_output_path_input', container=box)
+        label_row('Filepath:', 'render_output_path_input', container=box)
+        box.row()
+        box.operator(TreeGenRender.bl_idname)
         box.row()
 
         layout.separator()
