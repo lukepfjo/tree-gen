@@ -158,7 +158,7 @@ class Tree(object):
     tree_obj = None
     trunk_length = 0
 
-    def __init__(self, param, generate_leaves=True):
+    def __init__(self, param, generate_leaves=True, color_vertexes=False):
         """initialize tree with specified parameters"""
         self.param = param
         self.generate_leaves = generate_leaves
@@ -168,6 +168,8 @@ class Tree(object):
         # Disable leaf generation
         if not generate_leaves:
             self.param.leaf_blos_num = 0
+
+        self.color_vertexes = color_vertexes
 
     def make(self):
         """make the tree"""
@@ -299,16 +301,19 @@ class Tree(object):
             if counter % 500 == 0:
                 windman.progress_update(counter / 100)
                 update_log('\r-> {} leaves made, {} blossoms made'.format(leaf_index, blossom_index))
+
             if self.param.blossom_rate and random_random() < self.param.blossom_rate:
                 verts, faces = leaf.get_mesh(self.param.leaf_bend, base_blossom_shape, blossom_index)
                 blossom_verts.extend(verts)
                 blossom_faces.extend(faces)
                 blossom_index += 1
+
             else:
                 verts, faces = leaf.get_mesh(self.param.leaf_bend, base_leaf_shape, leaf_index)
                 leaf_verts.extend(verts)
                 leaf_faces.extend(faces)
                 leaf_index += 1
+
             counter += 1
 
         # set up mesh object
@@ -1231,7 +1236,7 @@ def scale_bezier_handles_for_flare(stem, max_points_per_seg):
         point.handle_right = point.co + (point.handle_right - point.co) / max_points_per_seg
 
 
-def construct(params, seed=0, generate_leaves=True):
+def construct(params, seed=0, generate_leaves=True, color_vertexes=False):
     """Construct the tree"""
 
     if seed == 0:
@@ -1239,7 +1244,7 @@ def construct(params, seed=0, generate_leaves=True):
 
     random.seed(seed)
 
-    t = Tree(TreeParam(params), generate_leaves)
+    t = Tree(TreeParam(params), generate_leaves, color_vertexes)
     t.make()
 
     # Try to get unneeded data out of memory ASAP

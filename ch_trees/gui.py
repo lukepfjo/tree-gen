@@ -227,7 +227,8 @@ class TreeGen(bpy.types.Operator):
                 return
 
             start_time = time.time()
-            parametric.gen.construct(params, scene.seed_input, scene.generate_leaves_input)
+            parametric.gen.construct(params, scene.seed_input, scene.generate_leaves_input,
+                                     scene.tree_leaf_shape_input == 11)
 
             if scene.render_input:
                 callback_queue.put(bpy.ops.object.tree_gen_render_tree)

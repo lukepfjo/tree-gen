@@ -61,6 +61,7 @@ class Leaf(object):
         else:
             bend_trf_1 = None
 
+        colors = []
         vertices = []
         for vertex in base_shape[0]:
             # rotate to correct direction
