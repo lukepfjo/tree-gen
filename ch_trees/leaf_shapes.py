@@ -245,7 +245,7 @@ def leaves(t):
                 (0.5, 0)]
         ),
         (  # 11 = vertex
-            [Vector([0,0,0])],
+            [Vector([0, 0, 0])],
             []
         )
     ][t]
